@@ -1,32 +1,53 @@
-name: Build LumaCamera APK
+name: LumaCamera iOS Build
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build iPhone App
+    runs-on: macos-latest
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
-      - name: Build Android APK
+      - name: Locate project.yml
+        id: project
+        shell: bash
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          PROJECT_FILE="$(find . -name project.yml -type f | head -n 1)"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: LumaCamera-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "project.yml was not found."
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$PROJECT_FILE")"
+          echo "directory=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Xcode project
+        working-directory: ${{ steps.project.outputs.directory }}
+        run: xcodegen generate
+
+      - name: Build LumaCamera
+        working-directory: ${{ steps.project.outputs.directory }}
+        run: |
+          xcodebuild \
+            -project LumaCamera.xcodeproj \
+            -scheme LumaCamera \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+            
